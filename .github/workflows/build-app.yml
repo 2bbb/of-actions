@@ -1,4 +1,4 @@
-name: Build openFrameworks App
+name: Build openFrameworks App (v2)
 
 on:
   workflow_call:
@@ -8,25 +8,29 @@ on:
         required: true
         type: string
       app_name:
-        description: "App directory name under apps/myApps/ (e.g. 'yourGreatApp')"
+        description: "App directory name under apps/myApps/"
         required: true
         type: string
       submodules:
-        description: "Whether to checkout submodules recursively"
+        description: "Checkout submodules recursively"
         type: boolean
         default: true
       preprocessor_defines:
-        description: "Additional preprocessor defines for Windows (semicolon-separated)"
+        description: "Windows preprocessor defines (semicolon-separated)"
         type: string
         default: ""
       cache_key_suffix:
-        description: "Suffix appended to cache key for busting"
+        description: "Cache key suffix for busting"
         type: string
         default: "v1"
-      run_app:
-        description: "Whether to run the app after building"
-        type: boolean
-        default: true
+      test_mode:
+        description: "build-only | run (non-blocking) | test (fail on error)"
+        type: string
+        default: "run"
+      configs:
+        description: "Build configurations as JSON array"
+        type: string
+        default: '["Release"]'
 
 permissions:
   contents: read
@@ -34,6 +38,9 @@ permissions:
 jobs:
   build-macos:
     runs-on: macos-14
+    strategy:
+      matrix:
+        config: ${{ fromJson(inputs.configs) }}
     steps:
       - name: Resolve oF download URL
         id: resolve
@@ -52,11 +59,10 @@ jobs:
           curl -sL "https://github.com/openframeworks/openFrameworks/releases/download/${TAG}/${ASSET}" -o "$ASSET"
           if [[ "$ASSET" == *.tar.gz ]]; then
             tar xzf "$ASSET"
-            rm -f "$ASSET"
           else
             unzip -q "$ASSET"
-            rm -f "$ASSET"
           fi
+          rm -f "$ASSET"
           rm -rf of_root
           mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root
 
@@ -70,20 +76,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: of_root/libs/openFrameworksCompiled
-          key: of-${{ inputs.of_version }}-macos-${{ inputs.cache_key_suffix }}
+          key: of-${{ inputs.of_version }}-macos-${{ matrix.config }}-${{ inputs.cache_key_suffix }}
 
       - name: Build
-        run: make -j$(sysctl -n hw.ncpu)
+        run: make -j$(sysctl -n hw.ncpu) ${{ matrix.config }}
         working-directory: of_root/apps/myApps/${{ inputs.app_name }}
 
       - name: Run
-        if: inputs.run_app
-        continue-on-error: true
-        run: ./bin/${{ inputs.app_name }}.app/Contents/MacOS/${{ inputs.app_name }}
+        if: inputs.test_mode != 'build-only'
+        continue-on-error: ${{ inputs.test_mode == 'run' }}
+        run: make Run${{ matrix.config }}
         working-directory: of_root/apps/myApps/${{ inputs.app_name }}
 
   build-linux:
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        config: ${{ fromJson(inputs.configs) }}
     steps:
       - name: Resolve oF download URL
         id: resolve
@@ -138,20 +147,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: of_root/libs/openFrameworksCompiled
-          key: of-${{ inputs.of_version }}-linux-${{ inputs.cache_key_suffix }}
+          key: of-${{ inputs.of_version }}-linux-${{ matrix.config }}-${{ inputs.cache_key_suffix }}
 
       - name: Build
-        run: make -j$(nproc)
+        run: make -j$(nproc) ${{ matrix.config }}
         working-directory: of_root/apps/myApps/${{ inputs.app_name }}
 
       - name: Run
-        if: inputs.run_app
-        continue-on-error: true
-        run: xvfb-run ./bin/${{ inputs.app_name }}
+        if: inputs.test_mode != 'build-only'
+        continue-on-error: ${{ inputs.test_mode == 'run' }}
+        run: xvfb-run make Run${{ matrix.config }}
         working-directory: of_root/apps/myApps/${{ inputs.app_name }}
 
   build-windows:
     runs-on: windows-2022
+    strategy:
+      matrix:
+        config: ${{ fromJson(inputs.configs) }}
     steps:
       - name: Resolve oF download URL
         id: resolve
@@ -172,6 +184,8 @@ jobs:
           $url = "https://github.com/openframeworks/openFrameworks/releases/download/$tag/$asset"
           Invoke-WebRequest -Uri $url -OutFile $asset
           Expand-Archive -Path $asset -DestinationPath .
+          Remove-Item $asset
+          if (Test-Path "of_root") { Remove-Item -Recurse -Force "of_root" }
           $dir = Get-ChildItem -Directory -Filter "of_v*_vs_release*" | Select-Object -First 1
           if ($dir) { Rename-Item -Path $dir.FullName -NewName "of_root" }
 
@@ -185,7 +199,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: of_root/libs/openFrameworksCompiled
-          key: of-${{ inputs.of_version }}-windows-${{ inputs.cache_key_suffix }}
+          key: of-${{ inputs.of_version }}-windows-${{ matrix.config }}-${{ inputs.cache_key_suffix }}
 
       - name: Generate project
         shell: pwsh
@@ -212,11 +226,11 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build
-        run: msbuild "of_root\apps\myApps\${{ inputs.app_name }}\${{ inputs.app_name }}.vcxproj" /p:configuration=release /p:platform=x64 /maxCpuCount
+        run: msbuild "of_root\apps\myApps\${{ inputs.app_name }}\${{ inputs.app_name }}.vcxproj" /p:configuration=${{ matrix.config }} /p:platform=x64 /maxCpuCount
 
       - name: Run
-        if: inputs.run_app
-        continue-on-error: true
+        if: inputs.test_mode != 'build-only'
+        continue-on-error: ${{ inputs.test_mode == 'run' }}
         shell: pwsh
         run: |
           & "of_root\apps\myApps\${{ inputs.app_name }}\bin\${{ inputs.app_name }}.exe"
