@@ -282,7 +282,10 @@ jobs:
             exit 1
           }
           & $exe
-          "exit_code=$LASTEXITCODE" >> $env:GITHUB_OUTPUT
+          $code = $LASTEXITCODE
+          # Convert signed negative exit codes to unsigned (e.g. -1073741819 -> 3221225477)
+          if ($code -lt 0) { $code = [uint32]$code }
+          "exit_code=$code" >> $env:GITHUB_OUTPUT
 
       - name: Check result
         if: inputs.test_mode != 'build-only'
