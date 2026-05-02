@@ -80,10 +80,10 @@ with:
 | Mode | Behavior |
 |------|----------|
 | `build-only` | Compile only, don't execute |
-| `run` | Compile and execute, ignore exit code (`continue-on-error`) |
-| `test` | Compile and execute, **fail CI on non-zero exit code** |
+| `run` | Compile and execute, tolerate non-zero exit codes, **but crash (segfault etc.) fails CI** |
+| `test` | Compile and execute, **fail CI on any non-zero exit code** |
 
-Use `test` when your test app exits with a meaningful code (e.g. ofxUnitTestsApp).
+All modes detect crashes (segfault, abort, etc.) and fail the CI run. Use `run` when your app may exit non-zero but shouldn't crash. Use `test` when your test app exits with a meaningful code (e.g. ofxUnitTestsApp).
 
 ## How It Works
 

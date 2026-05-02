@@ -87,10 +87,26 @@ jobs:
         working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
 
       - name: Run
+        id: run
         if: inputs.test_mode != 'build-only'
-        continue-on-error: ${{ inputs.test_mode == 'run' }}
-        run: make Run${{ matrix.config }}
+        continue-on-error: true
+        run: make Run${{ matrix.config }} 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
+
+      - name: Check result
+        if: inputs.test_mode != 'build-only'
+        run: |
+          CODE=${{ steps.run.outputs.exit_code }}
+          if [ -z "$CODE" ]; then CODE=1; fi
+          echo "Exit code: $CODE"
+          if [ "$CODE" -ge 128 ]; then
+            echo "::error::Process crashed with signal (exit code $CODE)"
+            exit 1
+          fi
+          if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
+            echo "::error::Tests failed (exit code $CODE)"
+            exit 1
+          fi
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -158,10 +174,26 @@ jobs:
         working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
 
       - name: Run
+        id: run
         if: inputs.test_mode != 'build-only'
-        continue-on-error: ${{ inputs.test_mode == 'run' }}
-        run: xvfb-run make Run${{ matrix.config }}
+        continue-on-error: true
+        run: xvfb-run make Run${{ matrix.config }} 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
+
+      - name: Check result
+        if: inputs.test_mode != 'build-only'
+        run: |
+          CODE=${{ steps.run.outputs.exit_code }}
+          if [ -z "$CODE" ]; then CODE=1; fi
+          echo "Exit code: $CODE"
+          if [ "$CODE" -ge 128 ]; then
+            echo "::error::Process crashed with signal (exit code $CODE)"
+            exit 1
+          fi
+          if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
+            echo "::error::Tests failed (exit code $CODE)"
+            exit 1
+          fi
 
   build-windows:
     runs-on: windows-2022
@@ -233,8 +265,31 @@ jobs:
         run: msbuild "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\${{ inputs.test_app }}.vcxproj" /p:configuration=${{ matrix.config }} /p:platform=x64 /maxCpuCount
 
       - name: Run
+        id: run
         if: inputs.test_mode != 'build-only'
-        continue-on-error: ${{ inputs.test_mode == 'run' }}
+        continue-on-error: true
         shell: pwsh
         run: |
-          & "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\bin\${{ inputs.test_app }}.exe"
+          $proc = Start-Process -FilePath "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\bin\${{ inputs.test_app }}.exe" -PassThru -NoNewWindow -Wait
+          "exit_code=$($proc.ExitCode)" >> $env:GITHUB_OUTPUT
+
+      - name: Check result
+        if: inputs.test_mode != 'build-only'
+        shell: bash
+        run: |
+          CODE=${{ steps.run.outputs.exit_code }}
+          if [ -z "$CODE" ]; then CODE=1; fi
+          echo "Exit code: $CODE"
+          if [ "$CODE" -ge 128 ]; then
+            echo "::error::Process crashed with signal (exit code $CODE)"
+            exit 1
+          fi
+          # Windows crash codes (0xC0000005 = 3221225477, etc.)
+          if [ "$CODE" -ge 100000 ]; then
+            echo "::error::Process crashed (exit code $CODE)"
+            exit 1
+          fi
+          if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
+            echo "::error::Tests failed (exit code $CODE)"
+            exit 1
+          fi
