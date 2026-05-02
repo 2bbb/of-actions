@@ -52,8 +52,10 @@ jobs:
           curl -sL "https://github.com/openframeworks/openFrameworks/releases/download/${TAG}/${ASSET}" -o "$ASSET"
           if [[ "$ASSET" == *.tar.gz ]]; then
             tar xzf "$ASSET"
+            rm -f "$ASSET"
           else
             unzip -q "$ASSET"
+            rm -f "$ASSET"
           fi
           rm -rf of_root
           mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root
@@ -99,6 +101,7 @@ jobs:
           ASSET="${{ steps.resolve.outputs.asset }}"
           curl -sL "https://github.com/openframeworks/openFrameworks/releases/download/${TAG}/${ASSET}" -o "$ASSET"
           tar xzf "$ASSET"
+          rm -f "$ASSET"
           rm -rf of_root
           mv of_v*_linux64* of_root
 

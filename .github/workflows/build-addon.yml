@@ -64,6 +64,7 @@ jobs:
           else
             unzip -q "$ASSET"
           fi
+          rm -f "$ASSET"
           rm -rf of_root
           mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root
 
@@ -114,8 +115,10 @@ jobs:
           curl -sL "$URL" -o "$ASSET"
           if [[ "$ASSET" == *.tar.gz ]]; then
             tar xzf "$ASSET"
+            rm -f "$ASSET"
           else
             unzip -q "$ASSET"
+            rm -f "$ASSET"
           fi
           rm -rf of_root
           mv of_v*_linux64* of_root
