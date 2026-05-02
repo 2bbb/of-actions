@@ -113,8 +113,12 @@ jobs:
           TAG="${{ steps.resolve.outputs.tag }}"
           ASSET="${{ steps.resolve.outputs.asset }}"
           gh release download "$TAG" --repo openframeworks/openFrameworks --pattern "$ASSET" --clobber
-          tar xzf "$ASSET"
-          mv of_v*_linux64* of_root 2>/dev/null || true
+          if [[ "$ASSET" == *.tar.gz ]]; then
+            tar xzf "$ASSET"
+          else
+            unzip -q "$ASSET"
+          fi
+          mv of_v*_linux64* of_root
 
       - name: Checkout addon
         uses: actions/checkout@v4
