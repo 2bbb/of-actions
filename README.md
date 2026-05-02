@@ -12,7 +12,7 @@ jobs:
     uses: 2bbb/of-actions/.github/workflows/build-addon.yml@v1
     with:
       of_version: "0.12.1"
-      addon_name: "ofxNozzle"
+      addon_name: "ofxYourAddon"
       test_app: "testApp"
 ```
 
@@ -24,7 +24,7 @@ jobs:
     uses: 2bbb/of-actions/.github/workflows/build-app.yml@v1
     with:
       of_version: "0.12.1"
-      app_name: "myApp"
+      app_name: "yourGreatApp"
 ```
 
 ### Nightly
