@@ -270,7 +270,17 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          $exe = "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\bin\${{ inputs.test_app }}.exe"
+          $binDir = "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\bin"
+          $exe = Join-Path $binDir "${{ inputs.test_app }}.exe"
+          # oF Debug builds use <TargetName>$(ProjectName)_debug</TargetName>
+          if ("${{ matrix.config }}" -eq "Debug" -and -not (Test-Path $exe)) {
+            $exe = Join-Path $binDir "${{ inputs.test_app }}_debug.exe"
+          }
+          if (-not (Test-Path $exe)) {
+            echo "::error::Binary not found: $exe"
+            "exit_code=127" >> $env:GITHUB_OUTPUT
+            exit 1
+          }
           & $exe
           "exit_code=$LASTEXITCODE" >> $env:GITHUB_OUTPUT
 
