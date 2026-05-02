@@ -270,8 +270,9 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          $proc = Start-Process -FilePath "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\bin\${{ inputs.test_app }}.exe" -PassThru -NoNewWindow -Wait
-          "exit_code=$($proc.ExitCode)" >> $env:GITHUB_OUTPUT
+          $exe = "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\bin\${{ inputs.test_app }}.exe"
+          & $exe
+          "exit_code=$LASTEXITCODE" >> $env:GITHUB_OUTPUT
 
       - name: Check result
         if: inputs.test_mode != 'build-only'
