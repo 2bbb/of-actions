@@ -64,6 +64,7 @@ jobs:
           else
             unzip -q "$ASSET"
           fi
+          rm -rf of_root
           mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root
 
       - name: Checkout addon
@@ -116,6 +117,7 @@ jobs:
           else
             unzip -q "$ASSET"
           fi
+          rm -rf of_root
           mv of_v*_linux64* of_root
 
       - name: Checkout addon
@@ -191,6 +193,7 @@ jobs:
           $url = "https://github.com/openframeworks/openFrameworks/releases/download/$tag/$asset"
           Invoke-WebRequest -Uri $url -OutFile $asset
           Expand-Archive -Path $asset -DestinationPath .
+          if (Test-Path "of_root") { Remove-Item -Recurse -Force "of_root" }
           $dir = Get-ChildItem -Directory -Filter "of_v*_vs_release*" | Select-Object -First 1
           if ($dir) { Rename-Item -Path $dir.FullName -NewName "of_root" }
 

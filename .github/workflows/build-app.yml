@@ -55,6 +55,7 @@ jobs:
           else
             unzip -q "$ASSET"
           fi
+          rm -rf of_root
           mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root
 
       - name: Checkout app
@@ -98,6 +99,7 @@ jobs:
           ASSET="${{ steps.resolve.outputs.asset }}"
           curl -sL "https://github.com/openframeworks/openFrameworks/releases/download/${TAG}/${ASSET}" -o "$ASSET"
           tar xzf "$ASSET"
+          rm -rf of_root
           mv of_v*_linux64* of_root
 
       - name: Checkout app
