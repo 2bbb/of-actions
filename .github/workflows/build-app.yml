@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       app_name:
-        description: "App directory name under apps/myApps/ (e.g. 'myApp')"
+        description: "App directory name under apps/myApps/ (e.g. 'yourGreatApp')"
         required: true
         type: string
       submodules:
@@ -46,22 +46,16 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Download oF
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download "${{ steps.resolve.outputs.tag }}" --repo openframeworks/openFrameworks --pattern "${{ steps.resolve.outputs.asset }}" --output of_release
-
-      - name: Extract oF
-        run: |
-          FILE="of_release"
-          if echo "$FILE" | grep -q '\.tar\.gz$'; then
-            tar xzf "$FILE"
+          TAG="${{ steps.resolve.outputs.tag }}"
+          ASSET="${{ steps.resolve.outputs.asset }}"
+          curl -sL "https://github.com/openframeworks/openFrameworks/releases/download/${TAG}/${ASSET}" -o "$ASSET"
+          if [[ "$ASSET" == *.tar.gz ]]; then
+            tar xzf "$ASSET"
           else
-            unzip -q "$FILE"
+            unzip -q "$ASSET"
           fi
-          EXTRACTED=$(find . -maxdepth 1 -type d ! -name '.' ! -name 'of_root' | head -1)
-          mv "$EXTRACTED" of_root
-          rm -f of_release
+          mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root
 
       - name: Checkout app
         uses: actions/checkout@v4
@@ -99,17 +93,12 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Download oF
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download "${{ steps.resolve.outputs.tag }}" --repo openframeworks/openFrameworks --pattern "${{ steps.resolve.outputs.asset }}" --output of_release.tar.gz
-
-      - name: Extract oF
-        run: |
-          tar xzf of_release.tar.gz
-          EXTRACTED=$(find . -maxdepth 1 -type d ! -name '.' ! -name 'of_root' | head -1)
-          mv "$EXTRACTED" of_root
-          rm -f of_release.tar.gz
+          TAG="${{ steps.resolve.outputs.tag }}"
+          ASSET="${{ steps.resolve.outputs.asset }}"
+          curl -sL "https://github.com/openframeworks/openFrameworks/releases/download/${TAG}/${ASSET}" -o "$ASSET"
+          tar xzf "$ASSET"
+          mv of_v*_linux64* of_root
 
       - name: Checkout app
         uses: actions/checkout@v4
@@ -171,19 +160,15 @@ jobs:
           echo "tag=$TAG" >> $env:GITHUB_OUTPUT
 
       - name: Download oF
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          gh release download "${{ steps.resolve.outputs.tag }}" --repo openframeworks/openFrameworks --pattern "${{ steps.resolve.outputs.asset }}" --output of_release.zip
-
-      - name: Extract oF
-        shell: pwsh
-        run: |
-          Expand-Archive -Path of_release.zip -DestinationPath .
-          $EXTRACTED = (Get-ChildItem -Directory -Depth 0 | Where-Object { $_.Name -ne 'of_root' }).Name | Select-Object -First 1
-          Rename-Item -Path $EXTRACTED -NewName of_root
-          Remove-Item of_release.zip
+          $tag = "${{ steps.resolve.outputs.tag }}"
+          $asset = "${{ steps.resolve.outputs.asset }}"
+          $url = "https://github.com/openframeworks/openFrameworks/releases/download/$tag/$asset"
+          Invoke-WebRequest -Uri $url -OutFile $asset
+          Expand-Archive -Path $asset -DestinationPath .
+          $dir = Get-ChildItem -Directory -Filter "of_v*_vs_release*" | Select-Object -First 1
+          if ($dir) { Rename-Item -Path $dir.FullName -NewName "of_root" }
 
       - name: Checkout app
         uses: actions/checkout@v4

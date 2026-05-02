@@ -54,18 +54,17 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Download oF
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.resolve.outputs.tag }}"
           ASSET="${{ steps.resolve.outputs.asset }}"
-          gh release download "$TAG" --repo openframeworks/openFrameworks --pattern "$ASSET" --clobber
+          URL="https://github.com/openframeworks/openFrameworks/releases/download/${TAG}/${ASSET}"
+          curl -sL "$URL" -o "$ASSET"
           if [[ "$ASSET" == *.tar.gz ]]; then
             tar xzf "$ASSET"
           else
             unzip -q "$ASSET"
           fi
-          mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root 2>/dev/null || true
+          mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root
 
       - name: Checkout addon
         uses: actions/checkout@v4
@@ -107,12 +106,11 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Download oF
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.resolve.outputs.tag }}"
           ASSET="${{ steps.resolve.outputs.asset }}"
-          gh release download "$TAG" --repo openframeworks/openFrameworks --pattern "$ASSET" --clobber
+          URL="https://github.com/openframeworks/openFrameworks/releases/download/${TAG}/${ASSET}"
+          curl -sL "$URL" -o "$ASSET"
           if [[ "$ASSET" == *.tar.gz ]]; then
             tar xzf "$ASSET"
           else
@@ -187,12 +185,11 @@ jobs:
 
       - name: Download oF
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ steps.resolve.outputs.tag }}"
           $asset = "${{ steps.resolve.outputs.asset }}"
-          gh release download $tag --repo openframeworks/openFrameworks --pattern $asset --clobber
+          $url = "https://github.com/openframeworks/openFrameworks/releases/download/$tag/$asset"
+          Invoke-WebRequest -Uri $url -OutFile $asset
           Expand-Archive -Path $asset -DestinationPath .
           $dir = Get-ChildItem -Directory -Filter "of_v*_vs_release*" | Select-Object -First 1
           if ($dir) { Rename-Item -Path $dir.FullName -NewName "of_root" }
