@@ -1,0 +1,240 @@
+name: Build openFrameworks Addon
+
+on:
+  workflow_call:
+    inputs:
+      of_version:
+        description: "openFrameworks version (e.g. '0.12.0', '0.12.1', 'nightly')"
+        required: true
+        type: string
+      addon_name:
+        description: "Addon directory name under addons/ (e.g. 'ofxNozzle')"
+        required: true
+        type: string
+      test_app:
+        description: "Test app directory name under addons/{addon_name}/ (e.g. 'testApp')"
+        required: true
+        type: string
+      submodules:
+        description: "Whether to checkout submodules recursively"
+        type: boolean
+        default: true
+      preprocessor_defines:
+        description: "Additional preprocessor defines for Windows (semicolon-separated, e.g. 'FOO=1;BAR=1')"
+        type: string
+        default: ""
+      cache_key_suffix:
+        description: "Suffix appended to cache key for busting"
+        type: string
+        default: "v1"
+      run_test_app:
+        description: "Whether to run the test app after building"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - name: Resolve oF download URL
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ inputs.of_version }}" = "nightly" ]; then
+            TAG="nightly"
+          else
+            TAG="${{ inputs.of_version }}"
+          fi
+          ASSET=$(gh release view "$TAG" --repo openframeworks/openFrameworks --json assets --jq '.assets[].name' | grep -E '_osx_release\.' | head -1)
+          echo "asset=$ASSET" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Download oF
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.resolve.outputs.tag }}"
+          ASSET="${{ steps.resolve.outputs.asset }}"
+          gh release download "$TAG" --repo openframeworks/openFrameworks --pattern "$ASSET" --clobber
+          if [[ "$ASSET" == *.tar.gz ]]; then
+            tar xzf "$ASSET"
+          else
+            unzip -q "$ASSET"
+          fi
+          mv of_v*_osx_release of_root 2>/dev/null || mv of_v*_osx* of_root 2>/dev/null || true
+
+      - name: Checkout addon
+        uses: actions/checkout@v4
+        with:
+          path: of_root/addons/${{ inputs.addon_name }}
+          submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+
+      - name: Cache oF build
+        uses: actions/cache@v4
+        with:
+          path: of_root/libs/openFrameworksCompiled
+          key: of-${{ inputs.of_version }}-macos-${{ inputs.cache_key_suffix }}
+
+      - name: Build testApp
+        run: make -j$(sysctl -n hw.ncpu)
+        working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
+
+      - name: Run testApp
+        if: inputs.run_test_app
+        continue-on-error: true
+        run: ./bin/${{ inputs.test_app }}.app/Contents/MacOS/${{ inputs.test_app }}
+        working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Resolve oF download URL
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ inputs.of_version }}" = "nightly" ]; then
+            TAG="nightly"
+          else
+            TAG="${{ inputs.of_version }}"
+          fi
+          ASSET=$(gh release view "$TAG" --repo openframeworks/openFrameworks --json assets --jq '.assets[].name' | grep -E '_linux64.*_release\.' | head -1)
+          echo "asset=$ASSET" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Download oF
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.resolve.outputs.tag }}"
+          ASSET="${{ steps.resolve.outputs.asset }}"
+          gh release download "$TAG" --repo openframeworks/openFrameworks --pattern "$ASSET" --clobber
+          tar xzf "$ASSET"
+          mv of_v*_linux64* of_root 2>/dev/null || true
+
+      - name: Checkout addon
+        uses: actions/checkout@v4
+        with:
+          path: of_root/addons/${{ inputs.addon_name }}
+          submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+
+      - name: Install oF dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libunwind-dev libboost-filesystem-dev libboost-system-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxmu-dev \
+            libxxf86vm-dev libx11-dev x11proto-dev \
+            libgl-dev libglew-dev freeglut3-dev libglu1-mesa-dev \
+            libglfw3-dev libcurl4-openssl-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pulseaudio \
+            gstreamer1.0-alsa gstreamer1.0-x \
+            libcairo2-dev libfreeimage-dev libfreetype6-dev libssl-dev \
+            libpulse-dev libasound2-dev libmpg123-dev liburiparser-dev \
+            libsndfile1-dev libopenal-dev \
+            libassimp-dev libpugixml-dev \
+            libdrm-dev libgbm-dev libegl-dev \
+            libjack-jackd2-dev librtaudio-dev \
+            libwayland-dev wayland-protocols libxkbcommon-dev libxkbcommon-x11-dev \
+            libraw1394-dev libudev-dev libusb-1.0-0-dev \
+            cmake gdb
+
+      - name: Cache oF build
+        uses: actions/cache@v4
+        with:
+          path: of_root/libs/openFrameworksCompiled
+          key: of-${{ inputs.of_version }}-linux-${{ inputs.cache_key_suffix }}
+
+      - name: Build testApp
+        run: make -j$(nproc)
+        working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
+
+      - name: Run testApp
+        if: inputs.run_test_app
+        continue-on-error: true
+        run: xvfb-run ./bin/${{ inputs.test_app }}
+        working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Resolve oF download URL
+        id: resolve
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ inputs.of_version }}"
+          if ($tag -eq "nightly") {
+            $env:TAG = "nightly"
+          } else {
+            $env:TAG = $tag
+          }
+          $asset = gh release view $env:TAG --repo openframeworks/openFrameworks --json assets --jq '.assets[].name' | Select-String -Pattern '_vs_release\.' | Select-Object -First 1
+          $asset = $asset.ToString().Trim()
+          echo "asset=$asset" >> $env:GITHUB_OUTPUT
+          echo "tag=$env:TAG" >> $env:GITHUB_OUTPUT
+
+      - name: Download oF
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.resolve.outputs.tag }}"
+          $asset = "${{ steps.resolve.outputs.asset }}"
+          gh release download $tag --repo openframeworks/openFrameworks --pattern $asset --clobber
+          Expand-Archive -Path $asset -DestinationPath .
+          $dir = Get-ChildItem -Directory -Filter "of_v*_vs_release*" | Select-Object -First 1
+          if ($dir) { Rename-Item -Path $dir.FullName -NewName "of_root" }
+
+      - name: Checkout addon
+        uses: actions/checkout@v4
+        with:
+          path: of_root/addons/${{ inputs.addon_name }}
+          submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+
+      - name: Cache oF build
+        uses: actions/cache@v4
+        with:
+          path: of_root/libs/openFrameworksCompiled
+          key: of-${{ inputs.of_version }}-windows-${{ inputs.cache_key_suffix }}
+
+      - name: Generate project
+        shell: pwsh
+        run: |
+          $pg = "of_root\projectGenerator\resources\app\app\projectGenerator.exe"
+          & $pg --ofPath="of_root" "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}"
+
+      - name: Inject preprocessor defines
+        if: inputs.preprocessor_defines != ''
+        shell: pwsh
+        run: |
+          $props = @"
+          <Project>
+            <ItemDefinitionGroup>
+              <ClCompile>
+                <PreprocessorDefinitions>${{ inputs.preprocessor_defines }};%(PreprocessorDefinitions)</PreprocessorDefinitions>
+              </ClCompile>
+            </ItemDefinitionGroup>
+          </Project>
+          "@
+          Set-Content -Path "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\Directory.Build.props" -Value $props
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build
+        run: msbuild "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\${{ inputs.test_app }}.vcxproj" /p:configuration=release /p:platform=x64 /maxCpuCount
+
+      - name: Run testApp
+        if: inputs.run_test_app
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\bin\${{ inputs.test_app }}.exe"
