@@ -327,7 +327,7 @@ jobs:
         shell: pwsh
         run: |
           $pg = "of_root\projectGenerator\resources\app\app\projectGenerator.exe"
-          & $pg /ofPath="of_root" /platforms="vs" "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}"
+          & $pg --ofPath="of_root" --platforms="vs" "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}"
 
       - name: Inject preprocessor defines
         if: inputs.preprocessor_defines != ''
