@@ -169,15 +169,22 @@ jobs:
           BIN="of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}/bin"
           if [ "${{ matrix.config }}" = "Debug" ]; then
             EXEC="$BIN/${{ inputs.test_app }}_debug"
+            # Xcode produces .app bundle: bin/testAppDebug.app/Contents/MacOS/testAppDebug
+            APP_EXEC="$BIN/${{ inputs.test_app }}Debug.app/Contents/MacOS/${{ inputs.test_app }}Debug"
           else
             EXEC="$BIN/${{ inputs.test_app }}"
+            # Xcode produces .app bundle: bin/testApp.app/Contents/MacOS/testApp
+            APP_EXEC="$BIN/${{ inputs.test_app }}.app/Contents/MacOS/${{ inputs.test_app }}"
           fi
-          if [ ! -f "$EXEC" ]; then
-            echo "::error::Binary not found: $EXEC"
+          if [ -f "$EXEC" ]; then
+            "$EXEC" 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          elif [ -f "$APP_EXEC" ]; then
+            "$APP_EXEC" 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Binary not found: $EXEC or $APP_EXEC"
             echo "exit_code=127" >> $GITHUB_OUTPUT
             exit 1
           fi
-          "$EXEC" 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 
       - name: Check result
         if: inputs.test_mode != 'build-only'
