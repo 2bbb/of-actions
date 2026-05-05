@@ -1,4 +1,4 @@
-name: Build openFrameworks Addon (v2)
+name: Build openFrameworks Addon (v3)
 
 on:
   workflow_call:
@@ -42,9 +42,6 @@ permissions:
 jobs:
   build-macos:
     runs-on: macos-14
-    strategy:
-      matrix:
-        config: ${{ fromJson(inputs.configs) }}
     steps:
       - name: Resolve oF download URL
         id: resolve
@@ -80,39 +77,38 @@ jobs:
         uses: actions/cache@v4
         with:
           path: of_root/libs/openFrameworksCompiled
-          key: of-${{ inputs.of_version }}-macos-${{ matrix.config }}-${{ inputs.cache_key_suffix }}
+          key: of-${{ inputs.of_version }}-macos-all-${{ inputs.cache_key_suffix }}
 
-      - name: Build
-        run: make -j$(sysctl -n hw.ncpu) ${{ matrix.config }}
+      - name: Build & Run all configs
         working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
-
-      - name: Run
-        id: run
-        if: inputs.test_mode != 'build-only'
-        continue-on-error: true
-        run: make Run${{ matrix.config }} 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-        working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
-
-      - name: Check result
-        if: inputs.test_mode != 'build-only'
         run: |
-          CODE=${{ steps.run.outputs.exit_code }}
-          if [ -z "$CODE" ]; then CODE=1; fi
-          echo "Exit code: $CODE"
-          if [ "$CODE" -ge 128 ]; then
-            echo "::error::Process crashed with signal (exit code $CODE)"
-            exit 1
-          fi
-          if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
-            echo "::error::Tests failed (exit code $CODE)"
-            exit 1
-          fi
+          CONFIGS='${{ inputs.configs }}'
+          for CONFIG in $(echo "$CONFIGS" | jq -r '.[]'); do
+            echo "::group::Build $CONFIG"
+            make -j$(sysctl -n hw.ncpu) "$CONFIG"
+            echo "::endgroup::"
+
+            if [ "${{ inputs.test_mode }}" != "build-only" ]; then
+              echo "::group::Run $CONFIG"
+              make "Run$CONFIG" 2>&1 | tee /tmp/of_run_${CONFIG}.log
+              CODE=${PIPESTATUS[0]}
+              echo "::endgroup::"
+
+              if [ -z "$CODE" ]; then CODE=1; fi
+              echo "Exit code ($CONFIG): $CODE"
+              if [ "$CODE" -ge 128 ]; then
+                echo "::error::$CONFIG crashed (exit code $CODE)"
+                exit 1
+              fi
+              if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
+                echo "::error::$CONFIG tests failed (exit code $CODE)"
+                exit 1
+              fi
+            fi
+          done
 
   build-macos-xcode:
     runs-on: macos-14
-    strategy:
-      matrix:
-        config: ${{ fromJson(inputs.configs) }}
     steps:
       - name: Resolve oF download URL
         id: resolve
@@ -148,7 +144,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: of_root/libs/openFrameworksCompiled
-          key: of-${{ inputs.of_version }}-macos-xcode-${{ matrix.config }}-${{ inputs.cache_key_suffix }}
+          key: of-${{ inputs.of_version }}-macos-xcode-all-${{ inputs.cache_key_suffix }}
 
       - name: Generate Xcode project
         run: |
@@ -156,56 +152,52 @@ jobs:
           chmod +x "$PG"
           "$PG" --ofPath="$(pwd)/of_root" -p"osx" "$(pwd)/of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}"
 
-      - name: Build
+      - name: Build & Run all configs
         run: |
-          PROJECT="of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}/${{ inputs.test_app }}.xcodeproj"
-          xcodebuild -project "$PROJECT" -configuration ${{ matrix.config }} build
+          ADDON_DIR="of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}"
+          PROJECT="$ADDON_DIR/${{ inputs.test_app }}.xcodeproj"
+          BIN="$ADDON_DIR/bin"
+          CONFIGS='${{ inputs.configs }}'
 
-      - name: Run
-        id: run
-        if: inputs.test_mode != 'build-only'
-        continue-on-error: true
-        run: |
-          BIN="of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}/bin"
-          if [ "${{ matrix.config }}" = "Debug" ]; then
-            EXEC="$BIN/${{ inputs.test_app }}_debug"
-            # Xcode produces .app bundle: bin/testAppDebug.app/Contents/MacOS/testAppDebug
-            APP_EXEC="$BIN/${{ inputs.test_app }}Debug.app/Contents/MacOS/${{ inputs.test_app }}Debug"
-          else
-            EXEC="$BIN/${{ inputs.test_app }}"
-            # Xcode produces .app bundle: bin/testApp.app/Contents/MacOS/testApp
-            APP_EXEC="$BIN/${{ inputs.test_app }}.app/Contents/MacOS/${{ inputs.test_app }}"
-          fi
-          if [ -f "$EXEC" ]; then
-            "$EXEC" 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-          elif [ -f "$APP_EXEC" ]; then
-            "$APP_EXEC" 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-          else
-            echo "::error::Binary not found: $EXEC or $APP_EXEC"
-            echo "exit_code=127" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+          for CONFIG in $(echo "$CONFIGS" | jq -r '.[]'); do
+            echo "::group::Build $CONFIG"
+            xcodebuild -project "$PROJECT" -configuration "$CONFIG" build
+            echo "::endgroup::"
 
-      - name: Check result
-        if: inputs.test_mode != 'build-only'
-        run: |
-          CODE=${{ steps.run.outputs.exit_code }}
-          if [ -z "$CODE" ]; then CODE=1; fi
-          echo "Exit code: $CODE"
-          if [ "$CODE" -ge 128 ]; then
-            echo "::error::Process crashed with signal (exit code $CODE)"
-            exit 1
-          fi
-          if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
-            echo "::error::Tests failed (exit code $CODE)"
-            exit 1
-          fi
+            if [ "${{ inputs.test_mode }}" != "build-only" ]; then
+              echo "::group::Run $CONFIG"
+              if [ "$CONFIG" = "Debug" ]; then
+                EXEC="$BIN/${{ inputs.test_app }}_debug"
+                APP_EXEC="$BIN/${{ inputs.test_app }}Debug.app/Contents/MacOS/${{ inputs.test_app }}Debug"
+              else
+                EXEC="$BIN/${{ inputs.test_app }}"
+                APP_EXEC="$BIN/${{ inputs.test_app }}.app/Contents/MacOS/${{ inputs.test_app }}"
+              fi
+              if [ -f "$EXEC" ]; then
+                "$EXEC" 2>&1 | tee /tmp/of_run_${CONFIG}.log; CODE=${PIPESTATUS[0]}
+              elif [ -f "$APP_EXEC" ]; then
+                "$APP_EXEC" 2>&1 | tee /tmp/of_run_${CONFIG}.log; CODE=${PIPESTATUS[0]}
+              else
+                echo "::error::Binary not found for $CONFIG"
+                exit 1
+              fi
+              echo "::endgroup::"
+
+              if [ -z "$CODE" ]; then CODE=1; fi
+              echo "Exit code ($CONFIG): $CODE"
+              if [ "$CODE" -ge 128 ]; then
+                echo "::error::$CONFIG crashed (exit code $CODE)"
+                exit 1
+              fi
+              if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
+                echo "::error::$CONFIG tests failed (exit code $CODE)"
+                exit 1
+              fi
+            fi
+          done
 
   build-linux:
     runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        config: ${{ fromJson(inputs.configs) }}
     steps:
       - name: Resolve oF download URL
         id: resolve
@@ -254,45 +246,44 @@ jobs:
             libjack-jackd2-dev librtaudio-dev \
             libwayland-dev wayland-protocols libxkbcommon-dev libxkbcommon-x11-dev \
             libraw1394-dev libudev-dev libusb-1.0-0-dev \
-            cmake gdb
+            cmake gdb jq
 
       - name: Cache oF build
         uses: actions/cache@v4
         with:
           path: of_root/libs/openFrameworksCompiled
-          key: of-${{ inputs.of_version }}-linux-${{ matrix.config }}-${{ inputs.cache_key_suffix }}
+          key: of-${{ inputs.of_version }}-linux-all-${{ inputs.cache_key_suffix }}
 
-      - name: Build
-        run: make -j$(nproc) ${{ matrix.config }}
+      - name: Build & Run all configs
         working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
-
-      - name: Run
-        id: run
-        if: inputs.test_mode != 'build-only'
-        continue-on-error: true
-        run: xvfb-run make Run${{ matrix.config }} 2>&1 | tee /tmp/of_run.log; echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-        working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
-
-      - name: Check result
-        if: inputs.test_mode != 'build-only'
         run: |
-          CODE=${{ steps.run.outputs.exit_code }}
-          if [ -z "$CODE" ]; then CODE=1; fi
-          echo "Exit code: $CODE"
-          if [ "$CODE" -ge 128 ]; then
-            echo "::error::Process crashed with signal (exit code $CODE)"
-            exit 1
-          fi
-          if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
-            echo "::error::Tests failed (exit code $CODE)"
-            exit 1
-          fi
+          CONFIGS='${{ inputs.configs }}'
+          for CONFIG in $(echo "$CONFIGS" | jq -r '.[]'); do
+            echo "::group::Build $CONFIG"
+            make -j$(nproc) "$CONFIG"
+            echo "::endgroup::"
+
+            if [ "${{ inputs.test_mode }}" != "build-only" ]; then
+              echo "::group::Run $CONFIG"
+              xvfb-run make "Run$CONFIG" 2>&1 | tee /tmp/of_run_${CONFIG}.log
+              CODE=${PIPESTATUS[0]}
+              echo "::endgroup::"
+
+              if [ -z "$CODE" ]; then CODE=1; fi
+              echo "Exit code ($CONFIG): $CODE"
+              if [ "$CODE" -ge 128 ]; then
+                echo "::error::$CONFIG crashed (exit code $CODE)"
+                exit 1
+              fi
+              if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
+                echo "::error::$CONFIG tests failed (exit code $CODE)"
+                exit 1
+              fi
+            fi
+          done
 
   build-windows:
     runs-on: windows-2022
-    strategy:
-      matrix:
-        config: ${{ fromJson(inputs.configs) }}
     steps:
       - name: Resolve oF download URL
         id: resolve
@@ -328,7 +319,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: of_root/libs/openFrameworksCompiled
-          key: of-${{ inputs.of_version }}-windows-${{ matrix.config }}-${{ inputs.cache_key_suffix }}
+          key: of-${{ inputs.of_version }}-windows-all-${{ inputs.cache_key_suffix }}
 
       - name: Generate project
         shell: pwsh
@@ -354,49 +345,45 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build
-        run: msbuild "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\${{ inputs.test_app }}.vcxproj" /p:configuration=${{ matrix.config }} /p:platform=x64 /maxCpuCount
-
-      - name: Run
-        id: run
-        if: inputs.test_mode != 'build-only'
-        continue-on-error: true
+      - name: Build & Run all configs
         shell: pwsh
         run: |
+          $configs = '${{ inputs.configs }}' | ConvertFrom-Json
           $binDir = "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\bin"
-          $exe = Join-Path $binDir "${{ inputs.test_app }}.exe"
-          # oF Debug builds use <TargetName>$(ProjectName)_debug</TargetName>
-          if ("${{ matrix.config }}" -eq "Debug" -and -not (Test-Path $exe)) {
-            $exe = Join-Path $binDir "${{ inputs.test_app }}_debug.exe"
-          }
-          if (-not (Test-Path $exe)) {
-            echo "::error::Binary not found: $exe"
-            "exit_code=127" >> $env:GITHUB_OUTPUT
-            exit 1
-          }
-          & $exe
-          $code = $LASTEXITCODE
-          # Convert signed negative exit codes to unsigned (e.g. -1073741819 -> 3221225477)
-          if ($code -lt 0) { $code = [uint32]$code }
-          "exit_code=$code" >> $env:GITHUB_OUTPUT
+          $vcxproj = "of_root\addons\${{ inputs.addon_name }}\${{ inputs.test_app }}\${{ inputs.test_app }}.vcxproj"
 
-      - name: Check result
-        if: inputs.test_mode != 'build-only'
-        shell: bash
-        run: |
-          CODE=${{ steps.run.outputs.exit_code }}
-          if [ -z "$CODE" ]; then CODE=1; fi
-          echo "Exit code: $CODE"
-          if [ "$CODE" -ge 128 ]; then
-            echo "::error::Process crashed with signal (exit code $CODE)"
-            exit 1
-          fi
-          # Windows crash codes (0xC0000005 = 3221225477, etc.)
-          if [ "$CODE" -ge 100000 ]; then
-            echo "::error::Process crashed (exit code $CODE)"
-            exit 1
-          fi
-          if [ "${{ inputs.test_mode }}" = "test" ] && [ "$CODE" -ne 0 ]; then
-            echo "::error::Tests failed (exit code $CODE)"
-            exit 1
-          fi
+          foreach ($config in $configs) {
+            Write-Host "::group::Build $config"
+            msbuild $vcxproj /p:configuration=$config /p:platform=x64 /maxCpuCount
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::$config build failed"
+              exit 1
+            }
+            Write-Host "::endgroup::"
+
+            if ("${{ inputs.test_mode }}" -ne "build-only") {
+              Write-Host "::group::Run $config"
+              $exe = Join-Path $binDir "${{ inputs.test_app }}.exe"
+              if ($config -eq "Debug" -and -not (Test-Path $exe)) {
+                $exe = Join-Path $binDir "${{ inputs.test_app }}_debug.exe"
+              }
+              if (-not (Test-Path $exe)) {
+                Write-Host "::error::Binary not found for $config"
+                exit 1
+              }
+              & $exe
+              $code = $LASTEXITCODE
+              if ($code -lt 0) { $code = [uint32]$code }
+              Write-Host "::endgroup::"
+
+              Write-Host "Exit code ($config): $code"
+              if ($code -ge 128 -or $code -ge 100000) {
+                Write-Host "::error::$config crashed (exit code $code)"
+                exit 1
+              }
+              if ("${{ inputs.test_mode }}" -eq "test" -and $code -ne 0) {
+                Write-Host "::error::$config tests failed (exit code $code)"
+                exit 1
+              }
+            }
+          }
