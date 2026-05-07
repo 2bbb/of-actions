@@ -35,6 +35,14 @@ on:
         description: "Build configurations as JSON array (e.g. '[\"Release\"]' or '[\"Debug\",\"Release\"]')"
         type: string
         default: '["Release"]'
+      pre_build_script:
+        description: "Bash script to run before building (relative to addon root). Runs on macOS and Linux."
+        type: string
+        default: ""
+      pre_build_script_windows:
+        description: "PowerShell script to run before building (relative to addon root). Runs on Windows."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -78,6 +86,11 @@ jobs:
         with:
           path: of_root/libs/openFrameworksCompiled
           key: of-${{ inputs.of_version }}-macos-all-${{ inputs.cache_key_suffix }}
+
+      - name: Pre-build script
+        if: inputs.pre_build_script != ''
+        working-directory: of_root/addons/${{ inputs.addon_name }}
+        run: bash ${{ inputs.pre_build_script }}
 
       - name: Build & Run all configs
         working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
@@ -145,6 +158,11 @@ jobs:
         with:
           path: of_root/libs/openFrameworksCompiled
           key: of-${{ inputs.of_version }}-macos-xcode-all-${{ inputs.cache_key_suffix }}
+
+      - name: Pre-build script
+        if: inputs.pre_build_script != ''
+        working-directory: of_root/addons/${{ inputs.addon_name }}
+        run: bash ${{ inputs.pre_build_script }}
 
       - name: Generate Xcode project
         run: |
@@ -254,6 +272,11 @@ jobs:
           path: of_root/libs/openFrameworksCompiled
           key: of-${{ inputs.of_version }}-linux-all-${{ inputs.cache_key_suffix }}
 
+      - name: Pre-build script
+        if: inputs.pre_build_script != ''
+        working-directory: of_root/addons/${{ inputs.addon_name }}
+        run: bash ${{ inputs.pre_build_script }}
+
       - name: Build & Run all configs
         working-directory: of_root/addons/${{ inputs.addon_name }}/${{ inputs.test_app }}
         run: |
@@ -344,6 +367,12 @@ jobs:
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+
+      - name: Pre-build script (Windows)
+        if: inputs.pre_build_script_windows != ''
+        working-directory: of_root/addons/${{ inputs.addon_name }}
+        shell: pwsh
+        run: & ".\${{ inputs.pre_build_script_windows }}"
 
       - name: Build & Run all configs
         shell: pwsh
