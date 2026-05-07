@@ -372,7 +372,8 @@ jobs:
         if: inputs.pre_build_script_windows != ''
         working-directory: of_root/addons/${{ inputs.addon_name }}
         shell: pwsh
-        run: & ".\${{ inputs.pre_build_script_windows }}"
+        run: |
+          & ".\${{ inputs.pre_build_script_windows }}"
 
       - name: Build & Run all configs
         shell: pwsh
