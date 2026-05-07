@@ -43,6 +43,14 @@ on:
         description: "PowerShell script to run before building (relative to addon root). Runs on Windows."
         type: string
         default: ""
+      pre_build_cache_path:
+        description: "Path to cache after pre_build_script (relative to addon root). Skip script on cache hit."
+        type: string
+        default: ""
+      pre_build_cache_key:
+        description: "Cache key prefix for pre_build_cache_path (OS appended automatically)."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -87,8 +95,16 @@ jobs:
           path: of_root/libs/openFrameworksCompiled
           key: of-${{ inputs.of_version }}-macos-all-${{ inputs.cache_key_suffix }}
 
+      - name: Restore pre-build cache
+        id: pre_build_cache
+        if: inputs.pre_build_cache_path != ''
+        uses: actions/cache@v4
+        with:
+          path: of_root/addons/${{ inputs.addon_name }}/${{ inputs.pre_build_cache_path }}
+          key: ${{ inputs.pre_build_cache_key }}-macos
+
       - name: Pre-build script
-        if: inputs.pre_build_script != ''
+        if: inputs.pre_build_script != '' && steps.pre_build_cache.outputs.cache-hit != 'true'
         working-directory: of_root/addons/${{ inputs.addon_name }}
         run: bash ${{ inputs.pre_build_script }}
 
@@ -159,8 +175,16 @@ jobs:
           path: of_root/libs/openFrameworksCompiled
           key: of-${{ inputs.of_version }}-macos-xcode-all-${{ inputs.cache_key_suffix }}
 
+      - name: Restore pre-build cache
+        id: pre_build_cache
+        if: inputs.pre_build_cache_path != ''
+        uses: actions/cache@v4
+        with:
+          path: of_root/addons/${{ inputs.addon_name }}/${{ inputs.pre_build_cache_path }}
+          key: ${{ inputs.pre_build_cache_key }}-macos
+
       - name: Pre-build script
-        if: inputs.pre_build_script != ''
+        if: inputs.pre_build_script != '' && steps.pre_build_cache.outputs.cache-hit != 'true'
         working-directory: of_root/addons/${{ inputs.addon_name }}
         run: bash ${{ inputs.pre_build_script }}
 
@@ -272,8 +296,16 @@ jobs:
           path: of_root/libs/openFrameworksCompiled
           key: of-${{ inputs.of_version }}-linux-all-${{ inputs.cache_key_suffix }}
 
+      - name: Restore pre-build cache
+        id: pre_build_cache
+        if: inputs.pre_build_cache_path != ''
+        uses: actions/cache@v4
+        with:
+          path: of_root/addons/${{ inputs.addon_name }}/${{ inputs.pre_build_cache_path }}
+          key: ${{ inputs.pre_build_cache_key }}-linux
+
       - name: Pre-build script
-        if: inputs.pre_build_script != ''
+        if: inputs.pre_build_script != '' && steps.pre_build_cache.outputs.cache-hit != 'true'
         working-directory: of_root/addons/${{ inputs.addon_name }}
         run: bash ${{ inputs.pre_build_script }}
 
@@ -368,8 +400,16 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Restore pre-build cache (Windows)
+        id: pre_build_cache
+        if: inputs.pre_build_cache_path != ''
+        uses: actions/cache@v4
+        with:
+          path: of_root/addons/${{ inputs.addon_name }}/${{ inputs.pre_build_cache_path }}
+          key: ${{ inputs.pre_build_cache_key }}-windows
+
       - name: Pre-build script (Windows)
-        if: inputs.pre_build_script_windows != ''
+        if: inputs.pre_build_script_windows != '' && steps.pre_build_cache.outputs.cache-hit != 'true'
         working-directory: of_root/addons/${{ inputs.addon_name }}
         shell: pwsh
         run: |
